@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Assessment & Attendance Monitoring</title>
+
+<!--
+  ============================================================
+  Student Assessment & Attendance Monitoring  (website version)
+  ------------------------------------------------------------
+  HOW TO INTEGRATE
+  1. Whole page : upload this file as-is (e.g. /attendance.html).
+  2. Inside an existing page:
+       - copy the <style> block into your CSS (everything is scoped to .sam)
+       - put  <div id="student-monitor"></div>  where you want the app
+       - copy the <script> block just before </body>
+  3. Backend (optional): set CONFIG.apiUrl below. The app will then
+       GET  apiUrl  -> returns the JSON state
+       POST apiUrl  -> receives the JSON state on every change
+     Without apiUrl, data is stored in the visitor's browser (localStorage).
+  ============================================================
+-->
+
+<style>
+.sam{
+  --bg:#f6f7f9; --card:#ffffff; --text:#1d2433; --muted:#667085; --line:#e3e6ec;
+  --brand:#1f4e79; --brand-2:#2e75b6; --ok:#1a7f4b; --ok-bg:#e3f5ea;
+  --bad:#b42318; --bad-bg:#fde8e6; --warn:#a15c07; --warn-bg:#fff3d6;
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  color:var(--text); background:var(--bg); padding:16px; border-radius:10px;
+  max-width:1200px; margin:0 auto; box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){
+  .sam{--bg:#12161d; --card:#1b212b; --text:#e8ecf3; --muted:#9aa4b5; --line:#2b3340;
+       --brand:#7fb2e5; --brand-2:#5b9bd5; --ok:#5fd18f; --ok-bg:#16382a;
+       --bad:#ff8a80; --bad-bg:#46201d; --warn:#f2c25b; --warn-bg:#413413;}
+}
+.sam *{box-sizing:border-box}
+.sam h1{font-size:20px;margin:0 0 2px;color:var(--brand)}
+.sam h2{font-size:15px;margin:0 0 10px}
+.sam .sub{color:var(--muted);margin-bottom:12px}
+.sam .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0;border-bottom:1px solid var(--line);padding-bottom:8px}
+.sam button,.sam select,.sam input{font:inherit;color:inherit}
+.sam .tab{background:transparent;border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+.sam .tab[aria-selected=true]{background:var(--brand);border-color:var(--brand);color:#fff}
+.sam .btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+.sam .btn:hover{border-color:var(--brand-2)}
+.sam .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+.sam .btn.danger{color:var(--bad)}
+.sam .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.sam .toolbar .grow{flex:1}
+.sam .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.sam .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.sam .kpi .l{color:var(--muted);font-size:12px}
+.sam .kpi .v{font-size:24px;font-weight:650;margin-top:2px}
+.sam .kpi .v.bad{color:var(--bad)} .sam .kpi .v.ok{color:var(--ok)}
+.sam .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:14px}
+.sam .bar{display:grid;grid-template-columns:110px 1fr 48px;gap:8px;align-items:center;margin:8px 0}
+.sam .bar .track{background:var(--line);border-radius:6px;height:14px;overflow:hidden}
+.sam .bar .fill{background:var(--brand-2);height:100%}
+.sam .scroll{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--card);max-height:70vh}
+.sam table{border-collapse:separate;border-spacing:0;width:100%}
+.sam th,.sam td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:left}
+.sam th{position:sticky;top:0;background:var(--card);z-index:2;font-size:12px;color:var(--muted)}
+.sam td.num,.sam th.num{text-align:right}
+.sam .stick{position:sticky;left:0;background:var(--card);z-index:1}
+.sam th.stick{z-index:3}
+.sam input[type=text],.sam input[type=number],.sam input[type=email],.sam select{
+  background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 6px;min-width:0}
+.sam td input[type=number]{width:70px}
+.sam td input[type=text],.sam td input[type=email]{width:130px}
+.sam td select.day{width:58px;padding:3px 2px}
+.sam .badge{display:inline-block;border-radius:999px;padding:1px 10px;font-size:12px;font-weight:600}
+.sam .b-ok{background:var(--ok-bg);color:var(--ok)}
+.sam .b-bad{background:var(--bad-bg);color:var(--bad)}
+.sam .b-warn{background:var(--warn-bg);color:var(--warn)}
+.sam .day.P{background:var(--ok-bg)} .sam .day.A{background:var(--bad-bg)} .sam .day.ML{background:var(--warn-bg)}
+.sam .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 18px}
+.sam .form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.sam .form input{font-size:14px;color:var(--text);padding:6px 8px}
+.sam .note{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px}
+.sam .empty{padding:20px;color:var(--muted);text-align:center}
+.sam .hidden{display:none}
+</style>
+</head>
+<body>
+
+<div id="student-monitor"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------- CONFIG ---------------- */
+  const CONFIG = {
+    storageKey: "sam.v1",
+    apiUrl: null,          // e.g. "/api/attendance"  (see header comment)
+    maxStudents: 200,
+    days: 40,
+    quizCount: 5,
+    assignmentCount: 5,
+    xlsxLib: "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" // only for "Import .xlsx"
+  };
+
+  /* ---------------- SEED DATA (from your workbook) ---------------- */
+  const SEED = {"settings":{"course":"Analog Electronics","faculty":"RT / NNP","semester":"III","year":"","attMin":0.75,"midMax":20,"midW":0.2,"quizMax":10,"quizW":0.05,"asgMax":10,"asgW":0.1,"attW":0.05,"otherW":0.1,"otherMax":10,"passPct":0.24,"asgRequired":4},"students":[{"id":1,"name":"A","program":"EE-101","semester":"III","section":"A","contact":"","remarks":"","att":["P","A","P","ML","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":[14,15,12],"quiz":[5,8,5,9,""],"asg":[8,8,8,8,""],"other":""},{"id":2,"name":"B","program":"EE-102","semester":"III","section":"A","contact":"","remarks":"","att":["P","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":[8,9,6],"quiz":[1,2,4,5,""],"asg":[1,2,3,4,""],"other":""},{"id":3,"name":"C","program":"EE-103","semester":"III","section":"A","contact":"","remarks":"","att":["P","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",15],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":4,"name":"D","program":"EE-104","semester":"III","section":"A","contact":"","remarks":"","att":["P","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",12],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":5,"name":"E","program":"EE-105","semester":"III","section":"A","contact":"","remarks":"","att":["P","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",17],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":6,"name":"F","program":"EE-106","semester":"III","section":"A","contact":"","remarks":"","att":["P","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",12],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":7,"name":"G","program":"EE-107","semester":"III","section":"A","contact":"","remarks":"","att":["P","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",16],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":8,"name":"H","program":"EE-108","semester":"III","section":"A","contact":"","remarks":"","att":["P","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",14],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":9,"name":"I","program":"EE-109","semester":"III","section":"A","contact":"","remarks":"","att":["A","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",1],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":10,"name":"J","program":"EE-110","semester":"III","section":"A","contact":"","remarks":"","att":["A","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",8],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":11,"name":"K","program":"EE-111","semester":"III","section":"A","contact":"","remarks":"","att":["A","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",5],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":12,"name":"L","program":"EE-112","semester":"III","section":"A","contact":"","remarks":"","att":["A","A","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",4],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":13,"name":"M","program":"EE-113","semester":"III","section":"A","contact":"","remarks":"","att":["A","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",6],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":14,"name":"N","program":"EE-114","semester":"III","section":"A","contact":"","remarks":"","att":["A","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",8],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":15,"name":"O","program":"EE-115","semester":"III","section":"A","contact":"","remarks":"","att":["A","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",2],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":16,"name":"P","program":"EE-116","semester":"III","section":"A","contact":"","remarks":"","att":["A","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",3],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":17,"name":"Q","program":"EE-117","semester":"III","section":"A","contact":"","remarks":"","att":["A","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",4],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":18,"name":"R","program":"EE-118","semester":"III","section":"A","contact":"","remarks":"","att":["A","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",5],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":19,"name":"S","program":"EE-119","semester":"III","section":"A","contact":"","remarks":"","att":["A","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",5],"quiz":["","","","",""],"asg":["","","","",""],"other":""},{"id":20,"name":"T","program":"EE-120","semester":"III","section":"A","contact":"","remarks":"","att":["A","P","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ia":["","",1],"quiz":["","","","",""],"asg":["","","","",""],"other":""}]};
+
+  /* ---------------- UTILITIES ---------------- */
+  const $  = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  const num = v => (v === "" || v == null || isNaN(+v)) ? null : +v;
+  const pct = (x, d) => (x * 100).toFixed(d == null ? 1 : d) + "%";
+  const f1  = x => (Math.round(x * 10) / 10).toFixed(1);
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const pad = (arr, n) => { const a = (arr || []).slice(0, n); while (a.length < n) a.push(""); return a; };
+
+  /* ---------------- CALCULATION ENGINE ----------------
+     Mirrors the formulas in the Excel workbook:
+       Attendance %   = (Present + ML) / (Present + Absent + ML)
+       Mid-Term       = best of IA1..IA3 / Max
+       Quiz           = best quiz / Max per quiz
+       Assignment     = average of submitted / Max per assignment
+       Weighted score = each % x weight x 100, summed (+ optional "Other")
+       Result         = PASS if total >= pass threshold x 100
+       Poor           = attendance below minimum OR total below pass mark   */
+  function calc(s, S) {
+    let P = 0, A = 0, ML = 0;
+    s.att.forEach(v => { if (v === "P") P++; else if (v === "A") A++; else if (v === "ML") ML++; });
+    const conducted = P + A + ML;
+    const attPct = conducted ? (P + ML) / conducted : 0;
+
+    const ia = s.ia.map(num).filter(v => v !== null);
+    const midObt = ia.length ? Math.max.apply(null, ia) : 0;
+    const midPct = S.midMax ? midObt / S.midMax : 0;
+
+    const q = s.quiz.map(num).filter(v => v !== null);
+    const quizBest = q.length ? Math.max.apply(null, q) : null;
+    const quizPct = quizBest !== null && S.quizMax ? quizBest / S.quizMax : 0;
+
+    const a = s.asg.map(num).filter(v => v !== null);
+    const asgAvg = a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+    const asgPct = asgAvg !== null && S.asgMax ? asgAvg / S.asgMax : 0;
+    const asgStatus = a.length < S.asgRequired ? "PENDING" : "COMPLETE";
+
+    const other = num(s.other) || 0;
+    const wAtt = attPct * S.attW * 100, wMid = midPct * S.midW * 100,
+          wQuiz = quizPct * S.quizW * 100, wAsg = asgPct * S.asgW * 100,
+          wOther = S.otherMax ? other / S.otherMax * S.otherW * 100 : 0;
+    const total = wAtt + wMid + wQuiz + wAsg + wOther;
+    const passMark = S.passPct * 100;
+    const shortage = attPct < S.attMin;
+
+    return { P, A, ML, conducted, attPct, midObt, midPct, midStatus: midPct < S.passPct ? "LOW" : "OK",
+             quizBest, quizPct, asgAvg, asgPct, asgStatus, other,
+             wAtt, wMid, wQuiz, wAsg, wOther, total,
+             result: total >= passMark ? "PASS" : "FAIL",
+             shortage, poor: shortage || total < passMark };
+  }
+  const totalMax = S => (S.attW + S.midW + S.quizW + S.asgW + S.otherW) * 100;
+
+  /* ---------------- STATE + STORAGE ---------------- */
+  let state = null, saveTimer = null;
+
+  function normalise(st) {
+    st.students.forEach(s => {
+      s.att = pad(s.att, CONFIG.days); s.ia = pad(s.ia, 3);
+      s.quiz = pad(s.quiz, CONFIG.quizCount); s.asg = pad(s.asg, CONFIG.assignmentCount);
+      if (s.other == null) s.other = "";
+    });
+    return st;
+  }
+  async function load() {
+    try {
+      if (CONFIG.apiUrl) {
+        const r = await fetch(CONFIG.apiUrl, { credentials: "same-origin" });
+        if (r.ok) { const j = await r.json(); if (j && j.students) return normalise(j); }
+      } else {
+        const raw = localStorage.getItem(CONFIG.storageKey);
+        if (raw) { const j = JSON.parse(raw); if (j && j.students) return normalise(j); }
+      }
+    } catch (e) { console.warn("Load failed, using sample data", e); }
+    return normalise(clone(SEED));
+  }
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        if (CONFIG.apiUrl) {
+          await fetch(CONFIG.apiUrl, { method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) });
+        } else {
+          localStorage.setItem(CONFIG.storageKey, JSON.stringify(state));
+        }
+      } catch (e) { console.warn("Save failed", e); }
+    }, 300);
+  }
+
+  /* ---------------- APP SHELL ---------------- */
+  const root = document.getElementById("student-monitor");
+  let tab = "dashboard", marksTab = "mid", onlyDefaulters = false, search = "";
+  const TABS = [["dashboard","Dashboard"],["students","Students"],["attendance","Attendance"],
+                ["marks","Marks"],["results","Results"],["defaulters","Defaulters"],["settings","Settings"]];
+
+  function shell() {
+    root.innerHTML =
+      '<div class="sam">' +
+        '<h1>Student Assessment &amp; Attendance Monitoring</h1>' +
+        '<div class="sub" id="sam-sub"></div>' +
+        '<div class="tabs" role="tablist">' +
+          TABS.map(t => '<button class="tab" role="tab" data-tab="' + t[0] + '">' + t[1] + '</button>').join("") +
+        '</div>' +
+        '<div id="sam-view"></div>' +
+      '</div>';
+    $(".tabs", root).addEventListener("click", e => {
+      const b = e.target.closest("[data-tab]"); if (b) { tab = b.dataset.tab; render(); }
+    });
+  }
+
+  function render() {
+    const S = state.settings;
+    $("#sam-sub").textContent = [S.course, S.semester && "Semester " + S.semester, S.faculty, S.year].filter(Boolean).join("  ·  ");
+    $$(".tab", root).forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab));
+    const v = $("#sam-view");
+    ({ dashboard, students, attendance, marks, results, defaulters, settings }[tab])(v);
+  }
+
+  const rows = () => state.students.map(s => ({ s, c: calc(s, state.settings) }));
+  const badge = (txt, cls) => '<span class="badge ' + cls + '">' + esc(txt) + '</span>';
+  const resBadge = r => badge(r, r === "PASS" ? "b-ok" : "b-bad");
+  const perfBadge = p => badge(p ? "Poor" : "OK", p ? "b-bad" : "b-ok");
+  const attBadge = sh => badge(sh ? "SHORTAGE" : "ELIGIBLE", sh ? "b-bad" : "b-ok");
+
+  /* ---------------- DASHBOARD ---------------- */
+  function dashboard(v) {
+    const S = state.settings, R = rows(), n = R.length || 1;
+    const avg = f => R.reduce((t, r) => t + f(r.c), 0) / n;
+    const tmax = totalMax(S);
+    const sorted = R.slice().sort((a, b) => a.c.total - b.c.total);
+    const slow = sorted.slice(0, 5), fast = sorted.slice().reverse().slice(0, 5);
+    const comp = [["Attendance", avg(c => c.attPct)], ["Mid-Term", avg(c => c.midPct)],
+                  ["Quiz", avg(c => c.quizPct)], ["Assignments", avg(c => c.asgPct)]];
+    const list = L => '<table><thead><tr><th>Enrollment</th><th>Name</th><th class="num">Marks</th></tr></thead><tbody>' +
+      (L.length ? L.map(r => '<tr><td>' + esc(r.s.id) + '</td><td>' + esc(r.s.name) + '</td><td class="num">' + f1(r.c.total) + '</td></tr>').join("")
+                : '<tr><td colspan="3" class="empty">No students</td></tr>') + '</tbody></table>';
+    const kpi = (l, val, cls) => '<div class="card kpi"><div class="l">' + l + '</div><div class="v ' + (cls || "") + '">' + val + '</div></div>';
+
+    v.innerHTML =
+      '<div class="cards">' +
+        kpi("Total Students", R.length) +
+        kpi("Average Attendance", pct(avg(c => c.attPct))) +
+        kpi("Class Average (out of " + f1(tmax) + ")", f1(avg(c => c.total))) +
+        kpi("Pass Count", R.filter(r => r.c.result === "PASS").length, "ok") +
+        kpi("Poor Performance", R.filter(r => r.c.poor).length, "bad") +
+        kpi("Attendance Shortage", R.filter(r => r.c.shortage).length, "bad") +
+      '</div>' +
+      '<div class="grid2">' +
+        '<div class="card"><h2>Class average by component (%)</h2>' +
+          comp.map(c => '<div class="bar"><span>' + c[0] + '</span><div class="track"><div class="fill" style="width:' +
+            Math.min(100, c[1] * 100).toFixed(1) + '%"></div></div><b>' + (c[1] * 100).toFixed(1) + '</b></div>').join("") + '</div>' +
+        '<div class="card"><h2>Slow learners (lowest 5)</h2>' + list(slow) + '</div>' +
+        '<div class="card"><h2>Fast learners (top 5)</h2>' + list(fast) + '</div>' +
+      '</div>';
+  }
+
+  /* ---------------- STUDENTS ---------------- */
+  function students(v) {
+    v.innerHTML =
+      '<div class="toolbar">' +
+        '<button class="btn primary" id="add">+ Add student</button>' +
+        '<input type="text" id="q" placeholder="Search name / enrollment…" value="' + esc(search) + '">' +
+        '<span class="grow"></span>' +
+        '<span style="color:var(--muted)">' + state.students.length + ' / ' + CONFIG.maxStudents + '</span>' +
+      '</div>' +
+      '<div class="scroll"><table><thead><tr><th>Enrollment No.</th><th>Student Name</th><th>Program</th><th>Semester</th><th>Section</th><th>Email / Contact</th><th>Remarks</th><th></th></tr></thead><tbody id="tb"></tbody></table></div>';
+    const fields = [["id","text"],["name","text"],["program","text"],["semester","text"],["section","text"],["contact","email"],["remarks","text"]];
+    const tb = $("#tb", v);
+    function fill() {
+      const q = search.toLowerCase();
+      const L = state.students.map((s, i) => [s, i]).filter(([s]) => !q || (s.name + " " + s.id).toLowerCase().includes(q));
+      tb.innerHTML = L.length ? L.map(([s, i]) => '<tr data-i="' + i + '">' +
+        fields.map(f => '<td><input type="' + f[1] + '" data-f="' + f[0] + '" value="' + esc(s[f[0]]) + '"></td>').join("") +
+        '<td><button class="btn danger" data-del>Delete</button></td></tr>').join("")
+        : '<tr><td colspan="8" class="empty">No students found.</td></tr>';
+    }
+    fill();
+    $("#q", v).addEventListener("input", e => { search = e.target.value; fill(); });
+    $("#add", v).addEventListener("click", () => {
+      if (state.students.length >= CONFIG.maxStudents) return alert("Maximum of " + CONFIG.maxStudents + " students reached.");
+      const ids = state.students.map(s => +s.id).filter(x => !isNaN(x));
+      state.students.push(normalise({ students: [{ id: ids.length ? Math.max.apply(null, ids) + 1 : 1, name: "", program: "", semester: state.settings.semester, section: "", contact: "", remarks: "" }] }).students[0]);
+      save(); search = ""; students(v);
+    });
+    tb.addEventListener("change", e => {
+      const tr = e.target.closest("tr"), f = e.target.dataset.f; if (!tr || !f) return;
+      state.students[+tr.dataset.i][f] = e.target.value; save();
+    });
+    tb.addEventListener("click", e => {
+      if (!e.target.matches("[data-del]")) return;
+      const i = +e.target.closest("tr").dataset.i;
+      if (confirm("Delete " + (state.students[i].name || "this student") + " and all their marks/attendance?")) {
+        state.students.splice(i, 1); save(); fill();
+      }
+    });
+  }
+
+  /* ---------------- ATTENDANCE ---------------- */
+  function attendance(v) {
+    const days = Array.from({ length: CONFIG.days }, (_, i) => i);
+    v.innerHTML =
+      '<div class="toolbar">' +
+        '<span>Mark day</span><select id="day">' + days.map(d => '<option value="' + d + '">Day ' + (d + 1) + '</option>').join("") + '</select>' +
+        '<button class="btn" id="allP">All Present</button><button class="btn" id="clr">Clear day</button>' +
+        '<span class="grow"></span><span style="color:var(--muted)">P = Present · A = Absent · ML = Medical Leave (counts as attended)</span>' +
+      '</div>' +
+      '<div class="scroll"><table><thead><tr><th class="stick">Student</th>' +
+        days.map(d => '<th>D' + (d + 1) + '</th>').join("") +
+        '<th class="num">P</th><th class="num">A</th><th class="num">ML</th><th class="num">Held</th><th class="num">Att %</th><th>Status</th></tr></thead><tbody id="tb"></tbody></table></div>';
+    const tb = $("#tb", v);
+    const sel = val => '<select class="day ' + val + '"><option value=""></option>' +
+      ["P","A","ML"].map(o => '<option' + (o === val ? " selected" : "") + '>' + o + '</option>').join("") + '</select>';
+    const tail = c => '<td class="num" data-k="P">' + c.P + '</td><td class="num" data-k="A">' + c.A + '</td><td class="num" data-k="ML">' + c.ML +
+      '</td><td class="num" data-k="held">' + c.conducted + '</td><td class="num" data-k="pct">' + pct(c.attPct) + '</td><td data-k="st">' + attBadge(c.shortage) + '</td>';
+    tb.innerHTML = state.students.map((s, i) => {
+      const c = calc(s, state.settings);
+      return '<tr data-i="' + i + '"><td class="stick"><b>' + esc(s.name || "—") + '</b> <span style="color:var(--muted)">#' + esc(s.id) + '</span></td>' +
+        s.att.map((a, d) => '<td data-d="' + d + '">' + sel(a) + '</td>').join("") + tail(c) + '</tr>';
+    }).join("") || '<tr><td class="empty">Add students first.</td></tr>';
+
+    function refreshRow(tr) {
+      const c = calc(state.students[+tr.dataset.i], state.settings);
+      $$("[data-k]", tr).forEach(td => td.remove());
+      tr.insertAdjacentHTML("beforeend", tail(c));
+    }
+    tb.addEventListener("change", e => {
+      const td = e.target.closest("td[data-d]"); if (!td) return;
+      const tr = td.parentNode; e.target.className = "day " + e.target.value;
+      state.students[+tr.dataset.i].att[+td.dataset.d] = e.target.value; save(); refreshRow(tr);
+    });
+    const setDay = val => {
+      const d = +$("#day", v).value;
+      state.students.forEach(s => { s.att[d] = val; }); save(); attendance(v);
+    };
+    $("#allP", v).addEventListener("click", () => setDay("P"));
+    $("#clr", v).addEventListener("click", () => setDay(""));
+  }
+
+  /* ---------------- MARKS ---------------- */
+  function marks(v) {
+    const S = state.settings;
+    const defs = {
+      mid:   { label: "Mid-Term", key: "ia",   n: 3, names: ["IA 1","IA 2","IA 3"], max: S.midMax,  extra: c => '<td class="num">' + c.midObt + ' / ' + S.midMax + '</td><td class="num">' + pct(c.midPct) + '</td><td>' + badge(c.midStatus, c.midStatus === "OK" ? "b-ok" : "b-bad") + '</td>', head: ["Best","%","Status"] },
+      quiz:  { label: "Quizzes", key: "quiz", n: CONFIG.quizCount, names: Array.from({length:CONFIG.quizCount},(_,i)=>"Quiz "+(i+1)), max: S.quizMax, extra: c => '<td class="num">' + (c.quizBest == null ? "" : c.quizBest) + '</td><td class="num">' + pct(c.quizPct) + '</td>', head: ["Best","%"] },
+      asg:   { label: "Assignments", key: "asg", n: CONFIG.assignmentCount, names: Array.from({length:CONFIG.assignmentCount},(_,i)=>"Asg "+(i+1)), max: S.asgMax, extra: c => '<td class="num">' + (c.asgAvg == null ? "" : f1(c.asgAvg)) + '</td><td class="num">' + pct(c.asgPct) + '</td><td>' + badge(c.asgStatus, c.asgStatus === "COMPLETE" ? "b-ok" : "b-warn") + '</td>', head: ["Average","%","Submission"] },
+      other: { label: "Other", key: "other", n: 1, names: ["Other marks"], max: S.otherMax, extra: c => '<td class="num">' + f1(c.wOther) + '</td>', head: ["Weighted"] }
+    };
+    const d = defs[marksTab];
+    v.innerHTML =
+      '<div class="toolbar">' +
+        Object.keys(defs).map(k => '<button class="tab" data-m="' + k + '" aria-selected="' + (k === marksTab) + '">' + defs[k].label + '</button>').join("") +
+        '<span class="grow"></span><span style="color:var(--muted)">Max per entry: ' + d.max + '. Leave blank if not attempted.</span>' +
+      '</div>' +
+      '<div class="scroll"><table><thead><tr><th class="stick">Student</th>' + d.names.map(n => '<th>' + n + '</th>').join("") +
+        d.head.map(h => '<th class="num">' + h + '</th>').join("") + '</tr></thead><tbody id="tb"></tbody></table></div>';
+    const tb = $("#tb", v);
+    const rowHtml = (s, i) => {
+      const vals = d.key === "other" ? [s.other] : s[d.key];
+      return '<tr data-i="' + i + '"><td class="stick"><b>' + esc(s.name || "—") + '</b> <span style="color:var(--muted)">#' + esc(s.id) + '</span></td>' +
+        vals.map((x, j) => '<td><input type="number" min="0" max="' + d.max + '" step="0.5" data-j="' + j + '" value="' + esc(x) + '"></td>').join("") +
+        d.extra(calc(s, S)) + '</tr>';
+    };
+    tb.innerHTML = state.students.map(rowHtml).join("") || '<tr><td class="empty">Add students first.</td></tr>';
+    $$("[data-m]", v).forEach(b => b.addEventListener("click", () => { marksTab = b.dataset.m; marks(v); }));
+    tb.addEventListener("change", e => {
+      const tr = e.target.closest("tr"); if (!tr || e.target.dataset.j == null) return;
+      let val = e.target.value;
+      if (val !== "") { val = Math.max(0, Math.min(d.max, +val)); e.target.value = val; }
+      const s = state.students[+tr.dataset.i];
+      if (d.key === "other") s.other = val; else s[d.key][+e.target.dataset.j] = val;
+      save();
+      const c = calc(s, S), tmp = document.createElement("tbody");
+      tmp.innerHTML = rowHtml(s, +tr.dataset.i);
+      const focusJ = e.target.dataset.j;
+      tr.replaceWith(tmp.firstChild);
+    });
+  }
+
+  /* ---------------- RESULTS ---------------- */
+  function results(v) {
+    const S = state.settings;
+    v.innerHTML =
+      '<div class="toolbar"><button class="btn" id="csv">Export CSV</button><span class="grow"></span>' +
+      '<span style="color:var(--muted)">Total is out of ' + f1(totalMax(S)) + ' (sum of component weights). Pass mark: ' + f1(S.passPct * 100) + '</span></div>' +
+      '<div class="scroll"><table><thead><tr><th class="stick">Student</th><th class="num">Attendance %</th><th class="num">Mid-Term %</th><th class="num">Quiz %</th><th class="num">Assignment %</th>' +
+      '<th class="num">Other</th><th class="num">Att wt.</th><th class="num">Mid wt.</th><th class="num">Quiz wt.</th><th class="num">Asg wt.</th><th class="num">Other wt.</th>' +
+      '<th class="num">Total</th><th>Result</th><th>Performance</th></tr></thead><tbody>' +
+      (rows().map(({ s, c }) => '<tr><td class="stick"><b>' + esc(s.name || "—") + '</b> <span style="color:var(--muted)">#' + esc(s.id) + '</span></td>' +
+        '<td class="num">' + pct(c.attPct) + '</td><td class="num">' + pct(c.midPct) + '</td><td class="num">' + pct(c.quizPct) + '</td><td class="num">' + pct(c.asgPct) + '</td>' +
+        '<td class="num">' + c.other + '</td><td class="num">' + f1(c.wAtt) + '</td><td class="num">' + f1(c.wMid) + '</td><td class="num">' + f1(c.wQuiz) + '</td><td class="num">' + f1(c.wAsg) + '</td><td class="num">' + f1(c.wOther) + '</td>' +
+        '<td class="num"><b>' + f1(c.total) + '</b></td><td>' + resBadge(c.result) + '</td><td>' + perfBadge(c.poor) + '</td></tr>').join("") ||
+        '<tr><td class="empty" colspan="14">No students.</td></tr>') + '</tbody></table></div>';
+    $("#csv", v).addEventListener("click", () => {
+      const head = ["Enrollment No.","Student Name","Attendance %","Mid-Term %","Quiz %","Assignment %","Other Marks","Total","Result","Academic Performance","Attendance Status"];
+      const body = rows().map(({ s, c }) => [s.id, s.name, (c.attPct*100).toFixed(1), (c.midPct*100).toFixed(1), (c.quizPct*100).toFixed(1), (c.asgPct*100).toFixed(1), c.other, c.total.toFixed(2), c.result, c.poor ? "Poor" : "OK", c.shortage ? "SHORTAGE" : "ELIGIBLE"]);
+      download("results.csv", [head].concat(body).map(r => r.map(x => '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"').join(",")).join("\r\n"), "text/csv");
+    });
+  }
+
+  /* ---------------- DEFAULTERS ---------------- */
+  function defaulters(v) {
+    const L = rows().filter(r => !onlyDefaulters || r.c.shortage || r.c.poor);
+    v.innerHTML =
+      '<div class="toolbar"><label><input type="checkbox" id="only"' + (onlyDefaulters ? " checked" : "") + '> Show only defaulters</label>' +
+      '<span class="grow"></span><span style="color:var(--muted)">Minimum attendance: ' + pct(state.settings.attMin, 0) + '</span></div>' +
+      '<div class="scroll"><table><thead><tr><th>Enrollment</th><th>Name</th><th class="num">Attendance %</th><th class="num">Total</th><th>Status</th><th>Performance</th></tr></thead><tbody>' +
+      (L.map(({ s, c }) => '<tr><td>' + esc(s.id) + '</td><td>' + esc(s.name) + '</td><td class="num">' + pct(c.attPct) + '</td><td class="num">' + f1(c.total) +
+        '</td><td>' + (c.shortage ? badge("ATTENDANCE SHORTAGE", "b-bad") : badge("OK", "b-ok")) + '</td><td>' + perfBadge(c.poor) + '</td></tr>').join("") ||
+        '<tr><td colspan="6" class="empty">No defaulters 🎉</td></tr>') + '</tbody></table></div>';
+    $("#only", v).addEventListener("change", e => { onlyDefaulters = e.target.checked; defaulters(v); });
+  }
+
+  /* ---------------- SETTINGS ---------------- */
+  function settings(v) {
+    const S = state.settings;
+    const T = [["course","Course / Subject","text"],["faculty","Faculty Name","text"],["semester","Semester","text"],["year","Academic Year","text"]];
+    const N = [["attMin","Attendance minimum (%)",100],["midMax","Internal term max marks",1],["midW","Internal term weight (%)",100],
+               ["quizMax","Quiz max (each)",1],["quizW","Quiz weight (%)",100],["asgMax","Assignment max (each)",1],["asgW","Assignment weight (%)",100],
+               ["asgRequired","Assignments required for COMPLETE",1],["attW","Attendance weight (%)",100],["otherW","Other component weight (%)",100],
+               ["otherMax","Other component max",1],["passPct","Overall pass threshold (%)",100]];
+    v.innerHTML =
+      '<div class="card"><div class="form">' +
+        T.map(f => '<label>' + f[1] + '<input type="text" data-s="' + f[0] + '" value="' + esc(S[f[0]]) + '"></label>').join("") +
+        N.map(f => '<label>' + f[1] + '<input type="number" step="any" min="0" data-s="' + f[0] + '" data-scale="' + f[2] + '" value="' + +(S[f[0]] * f[2]).toFixed(4) + '"></label>').join("") +
+      '</div><div class="note" id="wt"></div></div>' +
+      '<div class="toolbar" style="margin-top:12px">' +
+        '<button class="btn" id="xlsx">Import .xlsx</button><input type="file" id="file" accept=".xlsx,.xls" class="hidden">' +
+        '<button class="btn" id="json">Export backup (JSON)</button>' +
+        '<button class="btn" id="jin">Restore backup</button><input type="file" id="jfile" accept=".json" class="hidden">' +
+        '<span class="grow"></span><button class="btn danger" id="reset">Reset to sample data</button></div>';
+    const note = () => { $("#wt", v).textContent = "Component weights add up to " + f1(totalMax(state.settings)) + "%, so totals are out of " + f1(totalMax(state.settings)) + " (the Excel sheet labels this “/40”)."; };
+    note();
+    v.addEventListener("change", e => {
+      const k = e.target.dataset.s; if (!k) return;
+      state.settings[k] = e.target.type === "number" ? (+e.target.value || 0) / (+e.target.dataset.scale || 1) : e.target.value;
+      save(); note(); $("#sam-sub").textContent = [state.settings.course, state.settings.semester && "Semester " + state.settings.semester, state.settings.faculty, state.settings.year].filter(Boolean).join("  ·  ");
+    });
+    $("#json", v).addEventListener("click", () => download("attendance-backup.json", JSON.stringify(state, null, 2), "application/json"));
+    $("#jin", v).addEventListener("click", () => $("#jfile", v).click());
+    $("#jfile", v).addEventListener("change", async e => {
+      try { const j = JSON.parse(await e.target.files[0].text()); if (!j.students || !j.settings) throw 0; state = normalise(j); save(); render(); }
+      catch (_) { alert("That file is not a valid backup."); }
+    });
+    $("#reset", v).addEventListener("click", () => { if (confirm("Replace all current data with the sample data?")) { state = normalise(clone(SEED)); save(); render(); } });
+    $("#xlsx", v).addEventListener("click", () => $("#file", v).click());
+    $("#file", v).addEventListener("change", e => importXlsx(e.target.files[0]));
+  }
+
+  /* ---------------- EXCEL IMPORT (optional) ---------------- */
+  function loadLib() {
+    return new Promise((ok, fail) => {
+      if (window.XLSX) return ok();
+      const s = document.createElement("script"); s.src = CONFIG.xlsxLib; s.onload = ok; s.onerror = () => fail(new Error("Could not load the Excel reader."));
+      document.head.appendChild(s);
+    });
+  }
+  async function importXlsx(file) {
+    if (!file) return;
+    try {
+      await loadLib();
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const grid = name => wb.Sheets[name] ? XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "", blankrows: true }).slice(1) : [];
+      const master = grid("Student Master"), att = grid("Attendance"), mid = grid("Mid-Term"),
+            quiz = grid("Quizzes"), asg = grid("Assignments"), fin = grid("Final Calculation");
+      if (!master.length) throw new Error("Sheet “Student Master” not found.");
+      const out = [];
+      master.forEach((r, i) => {
+        if (r[0] === "" && r[1] === "") return;
+        out.push({ id: r[0], name: r[1], program: r[2], semester: r[3], section: r[4], contact: r[5], remarks: r[6],
+          att: (att[i] || []).slice(2, 2 + CONFIG.days).map(x => ["P","A","ML"].includes(x) ? x : ""),
+          ia: (mid[i] || []).slice(3, 6), quiz: (quiz[i] || []).slice(2, 2 + CONFIG.quizCount),
+          asg: (asg[i] || []).slice(2, 2 + CONFIG.assignmentCount), other: (fin[i] || [])[6] });
+      });
+      state.students = normalise({ students: out }).students.slice(0, CONFIG.maxStudents);
+      const st = wb.Sheets["Settings"] ? XLSX.utils.sheet_to_json(wb.Sheets["Settings"], { header: 1, defval: "" }) : [];
+      const get = label => { const r = st.find(x => String(x[0]).trim() === label); return r ? r[1] : ""; };
+      const S = state.settings, setNum = (k, label) => { const x = num(get(label)); if (x !== null) S[k] = x; };
+      S.course = get("Course / Subject") || S.course; S.faculty = get("Faculty Name") || S.faculty;
+      S.semester = get("Semester") || S.semester; S.year = get("Academic Year") || S.year;
+      setNum("attMin","Attendance Minimum %"); setNum("midMax","Internal Term Max Marks"); setNum("midW","Internal Term Weight");
+      setNum("quizMax","Quiz Max / Quiz (each)"); setNum("quizW","Quiz Weight"); setNum("asgMax","Assignment Max / Assignment");
+      setNum("asgW","Assignment Weight"); setNum("attW","Attendance Weight"); setNum("otherW","Other Component Weight");
+      setNum("otherMax","Other Component Max"); setNum("passPct","Overall Pass Threshold %");
+      save(); tab = "dashboard"; render();
+    } catch (err) { alert("Import failed: " + err.message); }
+  }
+
+  /* ---------------- DOWNLOAD HELPER ---------------- */
+  function download(name, text, type) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: type + ";charset=utf-8" }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+
+  /* ---------------- BOOT ---------------- */
+  window.StudentMonitor = { calc, CONFIG };   // exposed for reuse/testing
+  if (root) { shell(); load().then(s => { state = s; render(); }); }
+})();
+</script>
+</body>
+</html>
